@@ -68,18 +68,18 @@ pub(crate) fn goto_definition(
 
 #[derive(Debug)]
 pub enum Definition {
-    Object(ScopeObject),
-    Scope(Scope),
+    Object(ScopeObject, String),
+    Scope(Scope, String),
 }
 
 impl Definition {
     pub(crate) fn get_positions(&self) -> IndexSet<(KCLPos, KCLPos)> {
         let mut positions = IndexSet::new();
         match self {
-            Definition::Object(obj) => {
+            Definition::Object(obj, _) => {
                 positions.insert((obj.start.clone(), obj.end.clone()));
             }
-            Definition::Scope(scope) => match &scope.kind {
+            Definition::Scope(scope, _) => match &scope.kind {
                 kclvm_sema::resolver::scope::ScopeKind::Package(filenames) => {
                     for file in filenames {
                         let dummy_pos = KCLPos {
@@ -97,7 +97,14 @@ impl Definition {
         }
         positions
     }
+    pub(crate) fn get_name(&self) -> String {
+        match self {
+            Definition::Object(_, name) => name.clone(),
+            Definition::Scope(_, name) => name.clone(),
+        }
+    }
 }
+
 
 pub(crate) fn find_def(
     node: Node<Stmt>,
@@ -145,7 +152,7 @@ pub(crate) fn find_def(
                             find_def(node, &schema_expr.name.get_end_pos(), prog_scope);
                         if let Some(schema) = schema_def {
                             match schema {
-                                Definition::Object(obj) => {
+                                Definition::Object(obj, _) => {
                                     let schema_type = obj.ty.into_schema_type();
                                     return find_attr_in_schema(
                                         &schema_type,
@@ -153,7 +160,7 @@ pub(crate) fn find_def(
                                         &prog_scope.scope_map,
                                     );
                                 }
-                                Definition::Scope(_) => {
+                                Definition::Scope(_, _) => {
                                     //todo
                                 }
                             }
@@ -193,16 +200,16 @@ pub(crate) fn resolve_var(
                             kclvm_sema::ty::TypeKind::Module(module_ty) => match module_ty.kind {
                                 kclvm_sema::ty::ModuleKind::User => scope_map
                                     .get(&pkgpath_without_prefix!(module_ty.pkgpath))
-                                    .map(|scope| Definition::Scope(scope.borrow().clone())),
+                                    .map(|scope| Definition::Scope(scope.borrow().clone(), name)),
                                 kclvm_sema::ty::ModuleKind::System => {
-                                    Some(Definition::Object(obj.borrow().clone()))
+                                    Some(Definition::Object(obj.borrow().clone(), name))
                                 }
                                 kclvm_sema::ty::ModuleKind::Plugin => None,
                             },
                             _ => None,
                         }
                     }
-                    _ => Some(Definition::Object(obj.borrow().clone())),
+                    _ => Some(Definition::Object(obj.borrow().clone(), name)),
                 },
                 None => None,
             }
@@ -235,13 +242,13 @@ pub(crate) fn resolve_var(
                                 match &ty.kind {
                                     kclvm_sema::ty::TypeKind::Function(func_ty) => {
                                         return Some(Definition::Object(ScopeObject {
-                                            name: func_name,
+                                            name: func_name.clone(),
                                             start: func_name_node.get_pos(),
                                             end: func_name_node.get_end_pos(),
                                             ty: ty.clone(),
                                             kind: ScopeObjectKind::FunctionCall,
                                             doc: Some(func_ty.doc.clone()),
-                                        }))
+                                        }, func_name))
                                     }
                                     _ => return None,
                                 }

@@ -4,6 +4,7 @@ use crate::util::{build_word_index, parse_param_and_compile, Param};
 use anyhow;
 use kclvm_config::modfile::get_pkg_root;
 use lsp_types::Location;
+use std::time::{Duration, Instant};
 
 pub(crate) fn find_refs<F: Fn(String) -> Result<(), anyhow::Error>>(
     def_loc: Location,
@@ -13,11 +14,24 @@ pub(crate) fn find_refs<F: Fn(String) -> Result<(), anyhow::Error>>(
 ) -> anyhow::Result<Option<Vec<Location>>> {
     // todo: decide the scope by the workspace root and the kcl.mod both, use the narrower scope
     // todo: should use the current file path
+    // start timer
+    let pkg_root_start = Instant::now();
+
     if let Some(root) = get_pkg_root(def_loc.uri.path()) {
+        // end timer
+        let pkg_root_end = Instant::now();
+        let pkg_root_duration = (pkg_root_end-pkg_root_start).as_millis();
+        println!("get pkg root cost: {}", pkg_root_duration);
+
         match build_word_index(root) {
             std::result::Result::Ok(word_index) => {
+                let word_index_end = Instant::now();
+                let word_index_duration = (word_index_end - pkg_root_end).as_millis();
+                println!("word index build total cost: {}", word_index_duration);
+
                 if let Some(locs) = word_index.get(name.as_str()).cloned() {
-                    return anyhow::Ok(Some(
+                    println!("matched locations count: {}", locs.len());
+                    let result = Some(
                         locs.into_iter()
                             .filter(|ref_loc| {
                                 // from location to real def
@@ -52,7 +66,11 @@ pub(crate) fn find_refs<F: Fn(String) -> Result<(), anyhow::Error>>(
                                 }
                             })
                             .collect(),
-                    ));
+                    );
+                    let compilation_end = Instant::now();
+                    let compilation_duration = (compilation_end-word_index_end).as_millis();
+                    println!("filter and compilation cost: {}", compilation_duration);
+                    return anyhow::Ok(result);
                 } else {
                     return Ok(None);
                 }
@@ -72,6 +90,7 @@ mod tests {
     use super::find_refs;
     use lsp_types::{Location, Position, Range};
     use std::path::PathBuf;
+    use std::time::Instant;
 
     fn logger(msg: String) -> Result<(), anyhow::Error> {
         println!("{}", msg);
@@ -190,5 +209,30 @@ mod tests {
             }
             Err(_) => assert!(false, "file not found"),
         }
+    }
+
+    #[test]
+    fn find_refs_large_test() {
+        let p = "/Users/amy/work/Konfig/sigma/base/pkg/kusion_models/app_configuration/sofa/sofa_app_configuration.k";
+        let url = lsp_types::Url::from_file_path(p.clone()).unwrap();
+        
+        let def_loc = Location{
+            uri: url.clone(),
+            range: Range {
+                start: Position::new(17, 7),
+                end: Position::new(17, 27),
+            },
+        };
+
+        // start timer
+        let start = Instant::now();
+
+        // Send request and wait for it's response
+        find_refs(def_loc, "SofaAppConfiguration".to_string(), p.to_string(), logger);
+
+        // end timer
+        let end = Instant::now();
+        let duration = (end-start).as_millis();
+        println!("total cost:{}\n-------\n", duration);
     }
 }

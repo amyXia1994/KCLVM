@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::{fs, sync::Arc};
+use std::time::{Duration, Instant};
 
 use crate::from_lsp;
 
@@ -742,7 +743,12 @@ pub(crate) fn get_pkg_scope(
 /// scan and build a word -> Locations index map
 pub fn build_word_index(path: String) -> anyhow::Result<HashMap<String, Vec<Location>>> {
     let mut index: HashMap<String, Vec<Location>> = HashMap::new();
+    let get_files_start = Instant::now();
     if let Ok(files) = get_kcl_files(path.clone(), true) {
+        let get_files_end = Instant::now();
+        let duration1 = (get_files_end-get_files_start).as_millis();
+        println!("    get all kcl files cost: {}", duration1);
+        println!("    kcl file count: {}", files.len());
         for file_path in &files {
             // str path to url
             if let Ok(url) = Url::from_file_path(file_path) {
@@ -766,6 +772,9 @@ pub fn build_word_index(path: String) -> anyhow::Result<HashMap<String, Vec<Loca
                 }
             }
         }
+        let word_index_end = Instant::now();
+        let duration_2 = (word_index_end - get_files_end).as_millis();
+        println!("    pure word index build cost: {}", duration_2);
     }
     return Ok(index);
 }
@@ -845,6 +854,22 @@ mod tests {
     use lsp_types::{Location, Position, Range};
     use std::collections::HashMap;
     use std::path::PathBuf;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn test_build_word_index_large() {
+        let root = PathBuf::from("/Users/amy/work/open/catalog");
+        let start = Instant::now();
+        match build_word_index(root.to_str().unwrap().to_string()) {
+            Ok(result) => {
+                let end = Instant::now();
+                let duration = (end-start).as_millis();
+                print!("{}", duration)
+            }
+            Err(_) => print!("failed!!")
+        }
+    }
+
     #[test]
     fn test_build_word_index() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

@@ -31,7 +31,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
-use std::time::Duration;
+// use std::time::Duration;
 
 use kclvm_ast::ast::Program;
 use kclvm_error::Diagnostic as KCLDiagnostic;
@@ -64,6 +64,8 @@ use crate::{
     goto_def::goto_definition,
     util::{apply_document_changes, parse_param_and_compile, Param},
 };
+
+use std::time::{Duration, Instant};
 
 pub(crate) fn compare_goto_res(
     res: Option<GotoTypeDefinitionResponse>,

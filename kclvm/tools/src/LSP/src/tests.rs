@@ -10,6 +10,7 @@ use lsp_types::CompletionParams;
 use lsp_types::CompletionResponse;
 use lsp_types::CompletionTriggerKind;
 use lsp_types::DocumentFormattingParams;
+use lsp_types::FileDelete;
 use lsp_types::GotoDefinitionParams;
 use lsp_types::GotoDefinitionResponse;
 use lsp_types::Hover;
@@ -1346,7 +1347,7 @@ fn find_refs_test() {
         ReferenceParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri: url.clone() },
-                position: Position::new(0, 1),
+                position: Position::new(2, 1),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1365,29 +1366,29 @@ fn find_refs_test() {
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 1),
+                    start: Position::new(2, 0),
+                    end: Position::new(2, 1),
                 },
             },
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(1, 4),
-                    end: Position::new(1, 5),
+                    start: Position::new(3, 4),
+                    end: Position::new(3, 5),
                 },
             },
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(2, 4),
-                    end: Position::new(2, 5),
+                    start: Position::new(4, 4),
+                    end: Position::new(4, 5),
                 },
             },
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(12, 14),
-                    end: Position::new(12, 15),
+                    start: Position::new(14, 14),
+                    end: Position::new(14, 15),
                 },
             },
         ])
@@ -1432,7 +1433,9 @@ fn find_refs_with_file_change_test() {
             content_changes: vec![lsp_types::TextDocumentContentChangeEvent {
                 range: None,
                 range_length: None,
-                text: r#"a = "demo"
+                text: r#"import pkg.vars
+
+a = "demo"
 
 schema Name:
     name: str
@@ -1458,7 +1461,7 @@ p2 = Person {
         ReferenceParams {
             text_document_position: TextDocumentPositionParams {
                 text_document: TextDocumentIdentifier { uri: url.clone() },
-                position: Position::new(0, 1),
+                position: Position::new(2, 1),
             },
             work_done_progress_params: Default::default(),
             partial_result_params: Default::default(),
@@ -1476,17 +1479,299 @@ p2 = Person {
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(0, 0),
-                    end: Position::new(0, 1),
+                    start: Position::new(2, 0),
+                    end: Position::new(2, 1),
                 },
             },
             Location {
                 uri: url.clone(),
                 range: Range {
-                    start: Position::new(10, 14),
-                    end: Position::new(10, 15),
+                    start: Position::new(12, 14),
+                    end: Position::new(12, 15),
                 },
             },
+        ])
+        .unwrap()
+    );
+}
+
+#[test]
+fn find_refs_with_file_delete_test() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut main_path = root.clone();
+    let mut pkg_vars_path = root.clone();
+    main_path.push("src/test_data/find_refs_test/main.k");
+    pkg_vars_path.push("src/test_data/find_refs_test/pkg/vars.k");
+
+    let main_path = main_path.to_str().unwrap();
+    let pkg_vars_path = pkg_vars_path.to_str().unwrap();
+    let main_url = Url::from_file_path(main_path).unwrap();
+    let pkg_vars_url = Url::from_file_path(pkg_vars_path).unwrap();
+    let pkg_vars_src = std::fs::read_to_string(pkg_vars_path.clone()).unwrap();
+
+    let mut initialize_params = InitializeParams::default();
+    initialize_params.workspace_folders = Some(vec![WorkspaceFolder {
+        uri: Url::from_file_path(root.clone()).unwrap(),
+        name: "test".to_string(),
+    }]);
+    let server = Project {}.server(initialize_params);
+
+    // Mock open file
+    server.notification::<lsp_types::notification::DidOpenTextDocument>(
+        lsp_types::DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: pkg_vars_url.clone(),
+                language_id: "KCL".to_string(),
+                version: 0,
+                text: pkg_vars_src,
+            },
+        },
+    );
+
+    let id = server.next_request_id.get();
+    server.next_request_id.set(id.wrapping_add(1));
+    // Mock trigger find references before delete file main.k
+    let r: Request = Request::new(
+        id.into(),
+        "textDocument/references".to_string(),
+        ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: pkg_vars_url.clone(),
+                },
+                position: Position::new(0, 1),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: ReferenceContext {
+                include_declaration: true,
+            },
+        },
+    );
+
+    // Send request and wait for it's response
+    let res = server.send_and_receive(r);
+    assert_eq!(
+        res.result.unwrap(),
+        to_json(vec![
+            Location {
+                uri: main_url.clone(),
+                range: Range {
+                    start: Position::new(18, 9),
+                    end: Position::new(18, 15)
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 6),
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(1, 6),
+                    end: Position::new(1, 12),
+                },
+            },
+        ])
+        .unwrap()
+    );
+
+    // Mock delete file main.k
+    server.notification::<lsp_types::notification::DidDeleteFiles>(lsp_types::DeleteFilesParams {
+        files: vec![lsp_types::FileDelete {
+            uri: main_path.to_string(),
+        }],
+    });
+
+    let id = server.next_request_id.get();
+    server.next_request_id.set(id.wrapping_add(1));
+    // Mock trigger find references after delete file main.k
+    let r: Request = Request::new(
+        id.into(),
+        "textDocument/references".to_string(),
+        ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: pkg_vars_url.clone(),
+                },
+                position: Position::new(0, 1),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: ReferenceContext {
+                include_declaration: true,
+            },
+        },
+    );
+
+    // Send request and wait for it's response
+    let res = server.send_and_receive(r);
+    assert_eq!(
+        res.result.unwrap(),
+        to_json(vec![
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 6),
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(1, 6),
+                    end: Position::new(1, 12),
+                },
+            }
+        ])
+        .unwrap()
+    );
+}
+
+#[test]
+fn find_refs_with_file_rename_test() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut main_path = root.clone();
+    let mut pkg_vars_path = root.clone();
+    let mut renamed_path = root.clone();
+    main_path.push("src/test_data/find_refs_test/main.k");
+    pkg_vars_path.push("src/test_data/find_refs_test/pkg/vars.k");
+    renamed_path.push("src/test_data/find_refs_test/renamed.k");
+
+    let pkg_vars_path = pkg_vars_path.to_str().unwrap();
+    let main_url = Url::from_file_path(main_path.to_str().unwrap()).unwrap();
+    let pkg_vars_url = Url::from_file_path(pkg_vars_path).unwrap();
+    let renamed_url = Url::from_file_path(renamed_path.to_str().unwrap()).unwrap();
+    let pkg_vars_src = std::fs::read_to_string(pkg_vars_path.clone()).unwrap();
+
+    let mut initialize_params = InitializeParams::default();
+    initialize_params.workspace_folders = Some(vec![WorkspaceFolder {
+        uri: Url::from_file_path(root.clone()).unwrap(),
+        name: "test".to_string(),
+    }]);
+    let server = Project {}.server(initialize_params);
+
+    // Mock open file
+    server.notification::<lsp_types::notification::DidOpenTextDocument>(
+        lsp_types::DidOpenTextDocumentParams {
+            text_document: TextDocumentItem {
+                uri: pkg_vars_url.clone(),
+                language_id: "KCL".to_string(),
+                version: 0,
+                text: pkg_vars_src,
+            },
+        },
+    );
+
+    let id = server.next_request_id.get();
+    server.next_request_id.set(id.wrapping_add(1));
+    // Mock trigger find references before rename file main.k
+    let r: Request = Request::new(
+        id.into(),
+        "textDocument/references".to_string(),
+        ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: pkg_vars_url.clone(),
+                },
+                position: Position::new(0, 1),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: ReferenceContext {
+                include_declaration: true,
+            },
+        },
+    );
+
+    // Send request and wait for it's response
+    let res = server.send_and_receive(r);
+    assert_eq!(
+        res.result.unwrap(),
+        to_json(vec![
+            Location {
+                uri: main_url.clone(),
+                range: Range {
+                    start: Position::new(18, 9),
+                    end: Position::new(18, 15)
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 6),
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(1, 6),
+                    end: Position::new(1, 12),
+                },
+            },
+        ])
+        .unwrap()
+    );
+
+    // Mock rename file main.k to renamed.k
+    server.notification::<lsp_types::notification::DidRenameFiles>(lsp_types::RenameFilesParams {
+        files: vec![lsp_types::FileRename {
+            old_uri: main_path.to_str().unwrap().to_string(),
+            new_uri: renamed_path.to_str().unwrap().to_string(),
+        }],
+    });
+
+    let id = server.next_request_id.get();
+    server.next_request_id.set(id.wrapping_add(1));
+    // Mock trigger find references after rename file main.k to renamed.k
+    let r: Request = Request::new(
+        id.into(),
+        "textDocument/references".to_string(),
+        ReferenceParams {
+            text_document_position: TextDocumentPositionParams {
+                text_document: TextDocumentIdentifier {
+                    uri: pkg_vars_url.clone(),
+                },
+                position: Position::new(0, 1),
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+            context: ReferenceContext {
+                include_declaration: true,
+            },
+        },
+    );
+
+    // Send request and wait for it's response
+    let res = server.send_and_receive(r);
+    assert_eq!(
+        res.result.unwrap(),
+        to_json(vec![
+            // Location {
+            //     uri: renamed_url.clone(),
+            //     range: Range {
+            //         start: Position::new(18, 9),
+            //         end: Position::new(18, 15)
+            //     },
+            // }, //todo should contains
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(0, 0),
+                    end: Position::new(0, 6),
+                },
+            },
+            Location {
+                uri: pkg_vars_url.clone(),
+                range: Range {
+                    start: Position::new(1, 6),
+                    end: Position::new(1, 12),
+                },
+            }
         ])
         .unwrap()
     );

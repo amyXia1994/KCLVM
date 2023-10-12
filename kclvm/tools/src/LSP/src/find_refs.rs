@@ -103,37 +103,37 @@ mod tests {
                 let def_loc = Location {
                     uri: url.clone(),
                     range: Range {
-                        start: Position::new(0, 0),
-                        end: Position::new(0, 1),
+                        start: Position::new(2, 0),
+                        end: Position::new(2, 1),
                     },
                 };
                 let expect = vec![
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(0, 0),
-                            end: Position::new(0, 1),
+                            start: Position::new(2, 0),
+                            end: Position::new(2, 1),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(1, 4),
-                            end: Position::new(1, 5),
+                            start: Position::new(3, 4),
+                            end: Position::new(3, 5),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(2, 4),
-                            end: Position::new(2, 5),
+                            start: Position::new(4, 4),
+                            end: Position::new(4, 5),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(12, 14),
-                            end: Position::new(12, 15),
+                            start: Position::new(14, 14),
+                            end: Position::new(14, 15),
                         },
                     },
                 ];
@@ -164,30 +164,30 @@ mod tests {
                 let def_loc = Location {
                     uri: url.clone(),
                     range: Range {
-                        start: Position::new(4, 0),
-                        end: Position::new(7, 0),
+                        start: Position::new(6, 0),
+                        end: Position::new(9, 0),
                     },
                 };
                 let expect = vec![
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(4, 7),
-                            end: Position::new(4, 11),
+                            start: Position::new(6, 7),
+                            end: Position::new(6, 11),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(8, 7),
-                            end: Position::new(8, 11),
+                            start: Position::new(10, 7),
+                            end: Position::new(10, 11),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(11, 7),
-                            end: Position::new(11, 11),
+                            start: Position::new(13, 7),
+                            end: Position::new(13, 11),
                         },
                     },
                 ];
@@ -252,10 +252,5 @@ mod tests {
             }
             Err(_) => assert!(false, "file not found"),
         }
-    }
-
-    #[test]
-    fn find_refs_from_none_kpm_package() {
-
     }
 }

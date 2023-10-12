@@ -1,9 +1,9 @@
-use lsp_types::notification::{
-    DidChangeTextDocument,
-    DidChangeWatchedFiles,
-    DidCloseTextDocument,
-    DidOpenTextDocument,
-    DidSaveTextDocument, //DidDeleteFiles, DidRenameFiles, DidCreateFiles, //todo more
+use lsp_types::{
+    notification::{
+        DidChangeTextDocument, DidChangeWatchedFiles, DidCloseTextDocument, DidDeleteFiles,
+        DidOpenTextDocument, DidRenameFiles, DidSaveTextDocument,
+    },
+    Url,
 };
 use std::path::Path;
 
@@ -12,7 +12,10 @@ use crate::{
     from_lsp,
     state::LanguageServerState,
     util::apply_document_changes,
-    util::{build_word_index_for_file_content, word_index_add, word_index_subtract},
+    util::{
+        build_word_index_for_file_content, word_index_add, word_index_file_remove,
+        word_index_subtract, word_index_url_update,
+    },
 };
 
 impl LanguageServerState {
@@ -27,6 +30,8 @@ impl LanguageServerState {
             .on::<DidSaveTextDocument>(LanguageServerState::on_did_save_text_document)?
             .on::<DidCloseTextDocument>(LanguageServerState::on_did_close_text_document)?
             .on::<DidChangeWatchedFiles>(LanguageServerState::on_did_change_watched_files)?
+            .on::<DidRenameFiles>(LanguageServerState::on_did_rename_files)?
+            .on::<DidDeleteFiles>(LanguageServerState::on_did_delete_files)?
             .finish();
         Ok(())
     }
@@ -111,12 +116,9 @@ impl LanguageServerState {
         params: lsp_types::DidCloseTextDocumentParams,
     ) -> anyhow::Result<()> {
         let path = from_lsp::abs_path(&params.text_document.uri)?;
-
         if let Some(id) = self.vfs.read().file_id(&path.clone().into()) {
             self.opened_files.remove(&id);
         }
-        self.vfs_handle.invalidate(path);
-
         Ok(())
     }
 
@@ -128,6 +130,53 @@ impl LanguageServerState {
         for change in params.changes {
             let path = from_lsp::abs_path(&change.uri)?;
             self.vfs_handle.invalidate(path);
+        }
+        Ok(())
+    }
+
+    /// Called when a `DidDeleteFiles` notification was received.
+    fn on_did_delete_files(&mut self, params: lsp_types::DeleteFilesParams) -> anyhow::Result<()> {
+        for file in params.files {
+            let uri_string = file.uri.to_owned();
+            let file_path = Path::new(&uri_string);
+            if let Ok(url) = Url::from_file_path(&file_path) {
+                let path = from_lsp::abs_path(&url)?;
+                self.log_message(format!("on close file: {:?}", path.clone()));
+                // update word index map
+                for (key, value) in &mut self.word_index_map {
+                    let workspace_folder_path = Path::new(key.path());
+                    if file_path.starts_with(workspace_folder_path) {
+                        // remove locations in deleted files from word index
+                        word_index_file_remove(value, &url);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Called when a `DidRenameFiles` notification was received.
+    fn on_did_rename_files(&mut self, params: lsp_types::RenameFilesParams) -> anyhow::Result<()> {
+        for file_rename in params.files {
+            let old_uri = Path::new(&file_rename.old_uri);
+            let new_uri = Path::new(&file_rename.new_uri);
+            self.log_message(format!(
+                "on rename file: {:?} to {:?}",
+                old_uri.clone(),
+                new_uri.clone()
+            ));
+
+            for (key, value) in &mut self.word_index_map {
+                let workspace_folder_path = Path::new(key.path());
+                if old_uri.starts_with(workspace_folder_path) {
+                    // update file uri from word index
+                    word_index_url_update(
+                        value,
+                        &Url::from_file_path(old_uri).unwrap(),
+                        &Url::from_file_path(new_uri).unwrap(),
+                    );
+                }
+            }
         }
         Ok(())
     }

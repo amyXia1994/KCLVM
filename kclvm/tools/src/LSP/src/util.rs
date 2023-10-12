@@ -828,6 +828,26 @@ pub fn word_index_subtract(
     }
 }
 
+pub fn word_index_file_remove(from: &mut HashMap<String, Vec<Location>>, uri: &Url) {
+    for (_, value) in from {
+        value.retain(|loc| loc.uri != *uri);
+    }
+}
+
+pub fn word_index_url_update(
+    from: &mut HashMap<String, Vec<Location>>,
+    old_uri: &Url,
+    new_uri: &Url,
+) {
+    for (_, value) in from {
+        value.iter_mut().for_each(|loc| {
+            if loc.uri == *old_uri {
+                loc.uri = new_uri.clone();
+            }
+        });
+    }
+}
+
 // Word describes an arbitrary word in a certain line including
 // start position, end position and the word itself.
 #[derive(Debug, PartialEq, Eq, Clone)]

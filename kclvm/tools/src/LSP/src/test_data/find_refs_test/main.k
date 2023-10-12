@@ -1,3 +1,5 @@
+import .pkg.vars
+
 a = "demo"
 b = a
 c = a
@@ -13,3 +15,5 @@ p2 = Person {
         name: a
     }
 }
+
+d = vars.My_var

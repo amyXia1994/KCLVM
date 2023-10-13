@@ -218,23 +218,23 @@ mod tests {
                 let def_loc = Location {
                     uri: url.clone(),
                     range: Range {
-                        start: Position::new(5, 4),
-                        end: Position::new(5, 8),
+                        start: Position::new(7, 4),
+                        end: Position::new(7, 8),
                     },
                 };
                 let expect = vec![
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(5, 4),
-                            end: Position::new(5, 8),
+                            start: Position::new(7, 4),
+                            end: Position::new(7, 8),
                         },
                     },
                     Location {
                         uri: url.clone(),
                         range: Range {
-                            start: Position::new(12, 8),
-                            end: Position::new(12, 12),
+                            start: Position::new(14, 8),
+                            end: Position::new(14, 12),
                         },
                     },
                 ];

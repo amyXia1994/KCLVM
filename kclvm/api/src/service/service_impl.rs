@@ -560,11 +560,16 @@ impl KclvmServiceImpl {
     /// ```
     pub fn rename(&self, args: &RenameArgs) -> anyhow::Result<RenameResult> {
         let pkg_root = PathBuf::from(args.package_root.clone())
-            .canonicalize()?.adjust_canonicalization();
+            .canonicalize()?
+            .adjust_canonicalization();
         let symbol_path = args.symbol_path.clone();
         let mut file_paths = vec![];
         for path in args.file_paths.iter() {
-            file_paths.push(PathBuf::from(path).canonicalize()?.adjust_canonicalization());
+            file_paths.push(
+                PathBuf::from(path)
+                    .canonicalize()?
+                    .adjust_canonicalization(),
+            );
         }
         let new_name = args.new_name.clone();
         Ok(RenameResult {
